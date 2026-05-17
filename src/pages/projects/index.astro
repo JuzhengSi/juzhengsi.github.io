@@ -1,0 +1,33 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { projects } from "../../data/projects";
+---
+
+<BaseLayout title="项目" description="研究与工程项目记录。">
+  <header class="page-title">
+    <p class="eyebrow">Projects</p>
+    <h1>项目</h1>
+    <p class="lead">研究与工程项目记录。</p>
+  </header>
+
+  <ul class="project-list">
+    {
+      projects.map((project) => (
+        <li class="project-card">
+          <h2>{project.title}</h2>
+          <p>{project.description}</p>
+          {project.sections.map((section) => (
+            <section>
+              <h3>{section.heading}</h3>
+              <ul>
+                {section.items.map((item) => (
+                  <li>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>

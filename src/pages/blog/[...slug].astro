@@ -1,0 +1,56 @@
+---
+import { getCollection, render } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog");
+  return posts
+    .filter((post) => !post.data.draft)
+    .map((post) => ({
+      params: { slug: post.id },
+      props: { post },
+    }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const date = post.data.pubDate;
+const title =
+  post.data.title ??
+  post.id
+    .split("/")
+    .at(-1)!
+    .replace(/^\d{4}-\d{2}-\d{2}-/, "")
+    .replace(/[-_]+/g, " ");
+---
+
+<BaseLayout title={title} description={post.data.description}>
+  <article class="article">
+    <header class="article-header">
+      <p class="eyebrow">Blog</p>
+      <h1>{title}</h1>
+      {
+        date || post.data.tags.length ? (
+          <div class="article-meta">
+            {date ? (
+              <time datetime={date.toISOString()}>
+                {date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+              </time>
+            ) : null}
+            {post.data.tags.length ? (
+              <span>
+                {post.data.tags.map((tag) => (
+                  <span class="tag">{tag}</span>
+                ))}
+              </span>
+            ) : null}
+          </div>
+        ) : null
+      }
+      {post.data.description ? <p class="lead">{post.data.description}</p> : null}
+    </header>
+    <div class="prose">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

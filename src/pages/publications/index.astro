@@ -1,0 +1,27 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { publications } from "../../data/publications";
+---
+
+<BaseLayout title="论文" description="心理健康大模型、真实情境心理咨询对话与领域综述相关论文。">
+  <header class="page-title">
+    <p class="eyebrow">Publications</p>
+    <h1>论文</h1>
+    <p class="lead">心理健康大模型、真实情境心理咨询对话与领域综述相关论文。</p>
+  </header>
+
+  <ul class="publication-list">
+    {
+      publications.map((publication) => (
+        <li class="publication-item">
+          <h2><a href={publication.url} target="_blank" rel="noopener">{publication.title}</a></h2>
+          <p class="publication-authors">
+            {publication.authors.split("Juzheng Si")[0]}<strong>Juzheng Si</strong>{publication.authors.split("Juzheng Si")[1]}
+          </p>
+          <p class="meta">{publication.venue} {publication.year}</p>
+          <p>{publication.note}</p>
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>

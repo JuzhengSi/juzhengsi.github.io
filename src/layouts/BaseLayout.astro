@@ -1,0 +1,59 @@
+---
+import { site } from "../data/site";
+import "../styles/global.css";
+import "katex/dist/katex.min.css";
+
+type Props = {
+  title?: string;
+  description?: string;
+};
+
+const currentPath = Astro.url.pathname;
+const pageTitle = Astro.props.title ? `${Astro.props.title} | ${site.title}` : site.title;
+const description = Astro.props.description ?? site.description;
+
+const navItems = [
+  { href: "/", label: "主页" },
+  { href: "/blog/", label: "博客" },
+  { href: "/cv/", label: "简历" },
+];
+
+const isActive = (href: string) => (href === "/" ? currentPath === "/" : currentPath.startsWith(href));
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="司居正主页">
+        <span class="brand-mark">司</span>
+        <span class="brand-text">司居正</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        {
+          navItems.map((item) => (
+            <a class:list={{ active: isActive(item.href) }} href={item.href}>
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+    </header>
+    <main class="page">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <span>© {new Date().getFullYear()} 司居正</span>
+      <a href={`mailto:${site.email}`}>{site.email}</a>
+      <a href={site.github} target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </body>
+</html>

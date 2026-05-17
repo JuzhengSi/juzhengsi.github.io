@@ -1,0 +1,54 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const posts = (await getCollection("blog"))
+  .filter((post) => !post.data.draft)
+  .sort((a, b) => (b.data.pubDate?.valueOf() ?? 0) - (a.data.pubDate?.valueOf() ?? 0));
+
+const titleFromSlug = (slug: string) =>
+  slug
+    .split("/")
+    .at(-1)!
+    .replace(/^\d{4}-\d{2}-\d{2}-/, "")
+    .replace(/[-_]+/g, " ");
+---
+
+<BaseLayout title="Blog" description="司居正的个人 Blog，记录研究、工程与学习笔记。">
+  <header class="page-title">
+    <p class="eyebrow">Blog</p>
+    <h1>个人 Blog</h1>
+    <p class="lead">这里记录各种以 Markdown 格式保存的研究、工程与学习笔记。</p>
+  </header>
+
+  {
+    posts.length ? (
+      <ul class="post-list">
+        {posts.map((post) => (
+          <li class="post-card">
+            <h2><a href={`/blog/${post.id}/`}>{post.data.title ?? titleFromSlug(post.id)}</a></h2>
+            {
+              post.data.pubDate ? (
+                <p class="meta">
+                  <time datetime={post.data.pubDate.toISOString()}>
+                    {post.data.pubDate.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+                  </time>
+                </p>
+              ) : null
+            }
+            {post.data.description ? <p>{post.data.description}</p> : null}
+            {post.data.tags.length ? (
+              <p>
+                {post.data.tags.map((tag) => (
+                  <span class="tag">{tag}</span>
+                ))}
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div class="empty-state">还没有发布的 Blog。把 Markdown 文件放到 src/content/blog/ 后，这里会自动出现文章列表。</div>
+    )
+  }
+</BaseLayout>
