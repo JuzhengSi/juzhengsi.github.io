@@ -12,6 +12,8 @@ const titleFromSlug = (slug: string) =>
     .at(-1)!
     .replace(/^\d{4}-\d{2}-\d{2}-/, "")
     .replace(/[-_]+/g, " ");
+
+const postHref = (post: (typeof posts)[number]) => post.data.htmlUrl ?? `/blog/${post.id}/`;
 ---
 
 <BaseLayout title="Blog" description="司居正的个人 Blog，记录研究、工程与学习笔记。">
@@ -26,24 +28,26 @@ const titleFromSlug = (slug: string) =>
       <ul class="post-list">
         {posts.map((post) => (
           <li class="post-card">
-            <h2><a href={`/blog/${post.id}/`}>{post.data.title ?? titleFromSlug(post.id)}</a></h2>
-            {
-              post.data.pubDate ? (
-                <p class="meta">
-                  <time datetime={post.data.pubDate.toISOString()}>
-                    {post.data.pubDate.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
-                  </time>
+            <a class="post-card-link" href={postHref(post)}>
+              <h2>{post.data.title ?? titleFromSlug(post.id)}</h2>
+              {
+                post.data.pubDate ? (
+                  <p class="meta">
+                    <time datetime={post.data.pubDate.toISOString()}>
+                      {post.data.pubDate.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+                    </time>
+                  </p>
+                ) : null
+              }
+              {post.data.description ? <p>{post.data.description}</p> : null}
+              {post.data.tags.length ? (
+                <p>
+                  {post.data.tags.map((tag) => (
+                    <span class="tag">{tag}</span>
+                  ))}
                 </p>
-              ) : null
-            }
-            {post.data.description ? <p>{post.data.description}</p> : null}
-            {post.data.tags.length ? (
-              <p>
-                {post.data.tags.map((tag) => (
-                  <span class="tag">{tag}</span>
-                ))}
-              </p>
-            ) : null}
+              ) : null}
+            </a>
           </li>
         ))}
       </ul>

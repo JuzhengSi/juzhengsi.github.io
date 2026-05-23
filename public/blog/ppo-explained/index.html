@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPO 详解</title>
+  <meta name="description" content="近端策略优化 PPO 的模型角色、Clipped Loss、Returns、KL Loss 与训练目标。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #14201d;
+      --muted: #60736d;
+      --paper: #f4f8f5;
+      --panel: #ffffff;
+      --line: #d6e1db;
+      --green: #168354;
+      --mint: #5fd4a0;
+      --blue: #2770bd;
+      --violet: #7d5bd6;
+      --red: #d64f5f;
+      --gold: #c58a22;
+      --shadow: 0 20px 70px rgba(19, 47, 38, 0.12);
+      --radius: 8px;
+      --max: 1160px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(20, 32, 29, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(20, 32, 29, 0.035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 44px 44px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.75;
+      letter-spacing: 0;
+    }
+
+    .hero {
+      position: relative;
+      min-height: 88svh;
+      overflow: hidden;
+      color: #f8fff9;
+      background:
+        radial-gradient(circle at 14% 18%, rgba(95, 212, 160, 0.22), transparent 28%),
+        radial-gradient(circle at 80% 18%, rgba(39, 112, 189, 0.25), transparent 32%),
+        linear-gradient(135deg, #0d211b 0%, #123b2c 52%, #112942 100%);
+    }
+
+    #lossCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.86;
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      width: min(var(--max), calc(100% - 40px));
+      min-height: 88svh;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(340px, 0.74fr);
+      gap: 50px;
+      align-items: center;
+      padding: 84px 0 72px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      margin: 0 0 22px;
+      padding: 8px 12px;
+      border: 1px solid rgba(248, 255, 249, 0.28);
+      border-radius: 999px;
+      color: #dff9e9;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 0.9rem;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+      font-size: 4.6rem;
+      line-height: 1.02;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 690px;
+      margin: 24px 0 0;
+      color: rgba(248, 255, 249, 0.82);
+      font-size: 1.1rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .hero-actions a,
+    .original-doc-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid rgba(248, 255, 249, 0.32);
+      border-radius: var(--radius);
+      color: #f8fff9;
+      background: rgba(255, 255, 255, 0.09);
+      text-decoration: none;
+      transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .hero-actions a:hover,
+    .original-doc-button:hover {
+      transform: translateY(-3px);
+      background: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 18px 48px rgba(95, 212, 160, 0.18);
+    }
+
+    .hero-actions a.primary {
+      color: #0e241c;
+      border-color: #a8f5c4;
+      background: #a8f5c4;
+    }
+
+    .lab-card {
+      position: relative;
+      padding: 18px;
+      border: 1px solid rgba(248, 255, 249, 0.22);
+      border-radius: var(--radius);
+      background: rgba(9, 22, 18, 0.72);
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(18px);
+      animation: floatCard 7s ease-in-out infinite;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 0;
+      border-top: 1px solid rgba(248, 255, 249, 0.12);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: rgba(248, 255, 249, 0.88);
+    }
+
+    .metric:first-child {
+      border-top: 0;
+    }
+
+    .metric span {
+      color: #a8f5c4;
+    }
+
+    .spark {
+      width: 92px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--mint), var(--blue), var(--gold));
+      transform-origin: left;
+      animation: grow 2.8s ease-in-out infinite alternate;
+    }
+
+    .layout {
+      width: min(var(--max), calc(100% - 40px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 44px;
+      padding: 72px 0 30px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      display: grid;
+      gap: 8px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .toc strong {
+      color: var(--green);
+      font-size: 0.88rem;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.94rem;
+      transition: color 160ms ease, transform 160ms ease;
+    }
+
+    .toc a:hover,
+    .toc a.active {
+      color: var(--green);
+      transform: translateX(4px);
+    }
+
+    article {
+      min-width: 0;
+    }
+
+    .section {
+      margin: 0 0 76px;
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 620ms ease, transform 620ms ease;
+    }
+
+    .section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .section h2 {
+      margin: 0 0 18px;
+      font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+      font-size: 2.25rem;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .section p {
+      margin: 0 0 18px;
+      color: #354942;
+      font-size: 1.04rem;
+    }
+
+    .lead {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: var(--shadow);
+    }
+
+    .model-grid,
+    .step-grid,
+    .loss-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin: 26px 0;
+    }
+
+    .model,
+    .step,
+    .loss-card {
+      position: relative;
+      min-height: 160px;
+      padding: 20px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 14px 42px rgba(19, 47, 38, 0.08);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .model:hover,
+    .step:hover,
+    .loss-card:hover {
+      transform: translateY(-5px);
+      box-shadow: var(--shadow);
+    }
+
+    .model::before,
+    .loss-card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, var(--green), var(--blue), var(--violet));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 240ms ease;
+    }
+
+    .model:hover::before,
+    .loss-card:hover::before {
+      transform: scaleX(1);
+    }
+
+    .model b,
+    .step b,
+    .loss-card b {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green);
+      font-size: 1.02rem;
+    }
+
+    .model span,
+    .step span,
+    .loss-card span {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .formula {
+      margin: 24px 0;
+      padding: 22px;
+      overflow-x: hidden;
+      border: 1px solid rgba(22, 131, 84, 0.2);
+      border-radius: var(--radius);
+      color: #ecfff4;
+      background: #10221a;
+      box-shadow: var(--shadow);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .formula .katex-display {
+      margin: 0;
+      overflow-x: hidden;
+      overflow-y: hidden;
+    }
+
+    .formula .katex {
+      color: #ecfff4;
+      font-size: 1.08rem;
+      white-space: normal;
+    }
+
+    .clip-demo {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 26px 0;
+    }
+
+    .band {
+      padding: 20px;
+      border-radius: var(--radius);
+      color: #f8fff9;
+      background: linear-gradient(135deg, var(--green), #124a34);
+      box-shadow: var(--shadow);
+    }
+
+    .band strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 1.25rem;
+    }
+
+    .finale {
+      padding: 32px;
+      border-radius: var(--radius);
+      color: #f8fff9;
+      background:
+        linear-gradient(135deg, rgba(95, 212, 160, 0.22), transparent 40%),
+        linear-gradient(315deg, rgba(39, 112, 189, 0.22), transparent 44%),
+        #10221a;
+      box-shadow: var(--shadow);
+    }
+
+    .finale p {
+      color: rgba(248, 255, 249, 0.84);
+    }
+
+    .original-doc {
+      margin: -28px 0 72px;
+      text-align: center;
+    }
+
+    .original-doc-button {
+      min-height: 50px;
+      padding: 0 22px;
+      color: #0e241c;
+      border: 0;
+      background: linear-gradient(135deg, #a8f5c4, #7ec8ff);
+      font-weight: 760;
+    }
+
+    .original-doc-button::after {
+      content: "→";
+      margin-left: 10px;
+      transition: transform 180ms ease;
+    }
+
+    .original-doc-button:hover::after {
+      transform: translateX(5px);
+    }
+
+    footer {
+      padding: 32px 20px 54px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.92rem;
+    }
+
+    @keyframes floatCard {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-12px);
+      }
+    }
+
+    @keyframes grow {
+      from {
+        transform: scaleX(0.45);
+      }
+      to {
+        transform: scaleX(1);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .hero-inner,
+      .layout,
+      .clip-demo {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 3rem;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      .model-grid,
+      .step-grid,
+      .loss-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 1ms !important;
+        transition-duration: 1ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <canvas id="lossCanvas" aria-hidden="true"></canvas>
+    <div class="hero-inner">
+      <div>
+        <p class="eyebrow">PPO Training Lab</p>
+        <h1>PPO 详解</h1>
+        <p class="subtitle">从 policy、reference、reward、old policy 和 value model 出发，把 clipped policy loss、returns、KL penalty 和总训练目标连成一条可观察的训练链路。</p>
+        <div class="hero-actions">
+          <a class="primary" href="#models">查看模型角色</a>
+          <a href="#loss">拆解总 Loss</a>
+        </div>
+      </div>
+
+      <aside class="lab-card" aria-label="PPO metrics">
+        <div class="metric"><span>ratio</span><div class="spark"></div></div>
+        <div class="metric"><span>clip range</span><div>[0.8, 1.2]</div></div>
+        <div class="metric"><span>returns</span><div>reverse scan</div></div>
+        <div class="metric"><span>KL penalty</span><div>policy - ref</div></div>
+        <div class="metric"><span>objective</span><div>Lppo + value + KL</div></div>
+      </aside>
+    </div>
+  </header>
+
+  <main class="layout">
+    <nav class="toc" aria-label="文章目录">
+      <strong>Contents</strong>
+      <a href="#intro">PPO 是什么</a>
+      <a href="#models">模型角色</a>
+      <a href="#process">训练流程</a>
+      <a href="#clip">Clipped Loss</a>
+      <a href="#returns">Returns / KL</a>
+      <a href="#loss">总 Loss</a>
+    </nav>
+
+    <article>
+      <section id="intro" class="section">
+        <h2>PPO 是什么</h2>
+        <p class="lead">PPO 的全称是 Proximal Policy Optimization，中文叫近端策略优化。它的核心是：更新 policy model 时，让模型朝着更高 reward 的方向移动，但不要一步偏离旧策略太远。</p>
+        <p>这篇笔记把 PPO 训练拆成几个可观察对象：先采样回答和 logprobs，再计算 reward、value、advantage、ratio，最后把 clipped policy loss、value loss 和 KL loss 合成总目标。</p>
+      </section>
+
+      <section id="models" class="section">
+        <h2>PPO 需要的模型</h2>
+        <div class="model-grid">
+          <div class="model"><b>Policy model</b><span>最终要训练和更新的模型。</span></div>
+          <div class="model"><b>Reference model</b><span>提供 KL 约束，避免 policy 偏离初始模型太远。</span></div>
+          <div class="model"><b>Reward model</b><span>判断回答质量，并给出 reward 打分。</span></div>
+          <div class="model"><b>Old policy</b><span>保留旧策略的 logprobs，用来和当前 policy 计算 ratio。</span></div>
+          <div class="model"><b>Value model</b><span>也叫 critic model，为 response token 逐个估计 value。</span></div>
+          <div class="model"><b>Optimizer</b><span>把所有 loss 汇总后反向传播更新参数。</span></div>
+        </div>
+      </section>
+
+      <section id="process" class="section">
+        <h2>具体运行过程</h2>
+        <div class="step-grid">
+          <div class="step"><b>01</b><span>输入 prompt 给 old policy，得到 response 和 old logprobs。</span></div>
+          <div class="step"><b>02</b><span>把 prompt 和 response 输入 reward model，得到 task reward。</span></div>
+          <div class="step"><b>03</b><span>用 value model 对 response 的每个 token 估计 value。</span></div>
+          <div class="step"><b>04</b><span>根据 reward 和 value 计算 returns / advantages。</span></div>
+          <div class="step"><b>05</b><span>当前 policy 重新计算相同 response 的 new logprobs。</span></div>
+          <div class="step"><b>06</b><span>计算 ratio，再进入 clipped policy loss。</span></div>
+        </div>
+      </section>
+
+      <section id="clip" class="section">
+        <h2>Clipped Policy Loss</h2>
+        <p>ratio 来自当前 policy 和 old policy 的概率差异。如果 ratio 太大或太小，PPO 会把它裁剪到一个安全范围内，避免单次更新过猛。</p>
+        <div class="formula">$$
+L_t^{PPO}
+=
+\min\left(
+\rho_t A_t,
+\operatorname{clip}(\rho_t, 1-\epsilon, 1+\epsilon) A_t
+\right)
+$$</div>
+        <div class="clip-demo">
+          <div class="band"><strong>epsilon = 0.2</strong><span>clip range = [0.8, 1.2]</span></div>
+          <div class="band"><strong>ratio 越界</strong><span>0.7 -> 0.8，1.4 -> 1.2</span></div>
+        </div>
+        <p>这里的重点不是简单取最小值，而是用裁剪后的目标限制策略变化，让训练更稳定。</p>
+      </section>
+
+      <section id="returns" class="section">
+        <h2>Value Model、Returns 和 KL</h2>
+        <p>Value model 学习的是从当前位置开始未来能获得的累计奖励。常见计算方式是从最后一个 token 逆推到第一个 token。</p>
+        <div class="formula">$$
+G_t
+=
+r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \cdots
+$$</div>
+        <p>加入 KL 后，reward 会被 reference model 和 policy model 的差距惩罚修正。</p>
+        <div class="formula">$$
+r_t^{total}
+=
+r_t^{task}
+-
+\beta \mathrm{KL}_t
+$$
+
+$$
+\mathrm{KL}_t
+=
+\log \pi_\theta(y_t \mid s_t)
+-
+\log \pi_{\mathrm{ref}}(y_t \mid s_t)
+$$</div>
+        <p>因此 KL 不只影响 loss 项，也会进入 returns 的计算过程，改变 value model 的学习目标。</p>
+      </section>
+
+      <section id="loss" class="section finale">
+        <h2>总 Loss 与反向传播</h2>
+        <p>最终训练目标把 policy 的 clipped loss、value model 的 MSE 以及 KL penalty 合在一起。</p>
+        <div class="formula">$$
+\mathcal{L}
+=
+L_t^{PPO}
++
+c_v \mathcal{L}_{value}
++
+\beta \mathcal{L}_{KL}
+$$</div>
+        <p>训练循环可以概括为：old policy 采样、reward 打分、value 估计、计算 returns/advantages、当前 policy 计算 new logprobs、ratio 进入 clipped loss，最后汇总 loss 并反向传播。</p>
+      </section>
+
+      <div class="original-doc">
+        <a class="original-doc-button" href="/blog/ppo-详解_260504/">原版文档</a>
+      </div>
+    </article>
+  </main>
+
+  <footer>Designed as a static HTML reading experience for the PPO essay.</footer>
+
+  <script>
+    const sections = Array.from(document.querySelectorAll(".section"));
+    const tocLinks = Array.from(document.querySelectorAll(".toc a"));
+    window.addEventListener("DOMContentLoaded", () => {
+      if (window.renderMathInElement) {
+        window.renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "\\(", right: "\\)", display: false }
+          ],
+          throwOnError: false
+        });
+      }
+    });
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) entry.target.classList.add("visible");
+      });
+    }, { threshold: 0.15 });
+    sections.forEach((section) => revealObserver.observe(section));
+
+    const activeObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const id = entry.target.id;
+        tocLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${id}`));
+      });
+    }, { rootMargin: "-35% 0px -55% 0px" });
+    sections.forEach((section) => activeObserver.observe(section));
+
+    const canvas = document.querySelector("#lossCanvas");
+    const ctx = canvas.getContext("2d");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let w = 0;
+    let h = 0;
+    let t = 0;
+
+    function resize() {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      w = canvas.offsetWidth;
+      h = canvas.offsetHeight;
+      canvas.width = w * ratio;
+      canvas.height = h * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function drawCurve(color, offset, amp) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = -20; x <= w + 20; x += 18) {
+        const y = h * 0.5 + Math.sin((x + t + offset) / 70) * amp + Math.cos((x + offset) / 130) * amp * 0.45;
+        if (x === -20) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalAlpha = 0.42;
+      drawCurve("#a8f5c4", 0, 72);
+      drawCurve("#7ec8ff", 110, 54);
+      drawCurve("#ffd166", 230, 38);
+      ctx.globalAlpha = 1;
+
+      for (let i = 0; i < 18; i++) {
+        const x = (i / 17) * w;
+        const y = h * 0.5 + Math.sin((x + t) / 70) * 72;
+        ctx.fillStyle = i % 3 === 0 ? "#a8f5c4" : i % 3 === 1 ? "#7ec8ff" : "#ffd166";
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (!reduced) {
+        t += 0.8;
+        requestAnimationFrame(draw);
+      }
+    }
+
+    resize();
+    draw();
+    window.addEventListener("resize", () => {
+      resize();
+      if (reduced) draw();
+    });
+  </script>
+</body>
+</html>

@@ -6,6 +6,7 @@ tags:
   - Agent
   - Claude Code
   - 源码阅读
+htmlUrl: "/blog/mini-code-agent-loop/"
 ---
 
 阅读前注意，本文为手写+gpt-5.4润色生成。
